@@ -1,3 +1,4 @@
 .DS_Store
 submodules/MiDaS/weights/dpt_swin2_tiny_256.pt
 submodules/MiDaS/midas/__pycache__
+utils/__pycache__
