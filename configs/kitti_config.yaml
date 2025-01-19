@@ -10,3 +10,6 @@ Dataset:
     width: 1241
     height: 376
 
+Training:
+  edge_threshold: 1.1
+
