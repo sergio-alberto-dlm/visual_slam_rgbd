@@ -1,9 +1,12 @@
-
 import torch
 from torch import nn
+import cv2 
+import numpy as np 
 
 from utils.vo_utils import getWorld2View2
 from utils.vo_utils import image_gradient, image_gradient_mask
+from submodules.MiDaS.midas.model_loader import default_models, load_model
+from torchvision import transforms 
 
 
 class Camera(nn.Module):
@@ -41,6 +44,8 @@ class Camera(nn.Module):
         self.cy = cy
         self.image_height = image_height
         self.image_width = image_width
+
+        self.model = None 
 
         self.cam_rot_delta = nn.Parameter(
             torch.zeros(3, requires_grad=True, device=device)
@@ -120,3 +125,17 @@ class Camera(nn.Module):
 
         self.exposure_a = None
         self.exposure_b = None
+
+    @torch.no_grad()
+    def compute_depth(self):
+        prediction = self.model.forward(
+            self.original_image.unsqueeze(0)
+        )
+        self.depth = (
+            torch.nn.functional.interpolate(
+                prediction.unsqueeze(1),
+                size=self.original_image.shape, 
+                mode="bicubic", 
+                align_corners=False,
+            )
+        ).squeeze()
