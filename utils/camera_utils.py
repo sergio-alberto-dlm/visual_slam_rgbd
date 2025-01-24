@@ -2,11 +2,12 @@ import torch
 from torch import nn
 import cv2 
 import numpy as np 
+from torchvision import transforms 
+import torchvision.transforms.functional as F 
 
 from utils.vo_utils import getWorld2View2
 from utils.vo_utils import image_gradient, image_gradient_mask
 from submodules.MiDaS.midas.model_loader import default_models, load_model
-from torchvision import transforms 
 
 
 class Camera(nn.Module):
@@ -22,6 +23,7 @@ class Camera(nn.Module):
         cy,
         image_height,
         image_width,
+        model,
         device="cuda:0",
     ):
         super(Camera, self).__init__()
@@ -45,7 +47,7 @@ class Camera(nn.Module):
         self.image_height = image_height
         self.image_width = image_width
 
-        self.model = None 
+        self.model = model  
 
         self.cam_rot_delta = nn.Parameter(
             torch.zeros(3, requires_grad=True, device=device)
@@ -64,7 +66,7 @@ class Camera(nn.Module):
         self.projection_matrix = projection_matrix.to(device=device)
 
     @staticmethod
-    def init_from_dataset(dataset, idx, projection_matrix):
+    def init_from_dataset(dataset, idx, projection_matrix, model):
         gt_color, gt_pose = dataset[idx]
         return Camera(
             idx,
@@ -77,6 +79,7 @@ class Camera(nn.Module):
             dataset.cy,
             dataset.height,
             dataset.width,
+            model=model, 
             device=dataset.device,
         )
 
@@ -128,14 +131,24 @@ class Camera(nn.Module):
 
     @torch.no_grad()
     def compute_depth(self):
-        prediction = self.model.forward(
-            self.original_image.unsqueeze(0)
-        )
+        resize_transform = transforms.Compose([
+            transforms.Resize((256, 256)),  # Resize to the model's expected input size
+            transforms.ToTensor(),          # Convert to tensor
+            transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x)  # Ensure 3 channels
+        ])
+        # convert to PIL image 
+        image = F.to_pil_image(self.original_image)
+        # resize to fit the model 
+        image = resize_transform(image)
+        # add a batch dimension
+        image = image.unsqueeze(0)
+        # Perform the prediction
+        prediction = self.model.forward(image)
         self.depth = (
             torch.nn.functional.interpolate(
-                prediction.unsqueeze(1),
-                size=self.original_image.shape, 
-                mode="bicubic", 
-                align_corners=False,
+            prediction.unsqueeze(1),
+            size=self.original_image.shape[1:], 
+            mode="bicubic", 
+            align_corners=False,
             )
         ).squeeze()
